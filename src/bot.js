@@ -19,7 +19,6 @@ class Bot {
         this.bot = null;
         this.spawned = false;
         this.createdAt = Date.now();   // 供掉线自动重连检测使用
-        this.lastActivity = Date.now(); // 最近一次收到服务器通信(含 keepalive)的时间,用于僵尸连接检测
 
         // 行为状态
         this.home = null;              // Vec3,出生点(用于随机移动的圆心)
@@ -41,24 +40,13 @@ class Bot {
             hideErrors: false
         });
 
-        // 开启 TCP 保活:服务器单方面断开(无 FIN/RST)时,操作系统能更快发现断线
-        if (this.bot.socket && typeof this.bot.socket.setKeepAlive === 'function') {
-            this.bot.socket.setKeepAlive(true, 10000);
-        }
-        // 监听底层 keepalive 包 —— 这是“服务器还活着”的最可靠证据
-        if (this.bot._client && typeof this.bot._client.on === 'function') {
-            this.bot._client.on('keep_alive', () => { this.lastActivity = Date.now(); });
-        }
-
         this.bot.on('login', () => {
-            this.lastActivity = Date.now();
             this.log.info(`[${this.name}] 握手通过,等待生成...`);
         });
 
         this.bot.on('spawn', () => {
             this.spawned = true;
             this.home = this.bot.entity.position.clone();
-            this.lastActivity = Date.now();
             this.log.info(`[${this.name}] 已生成于 ${this.home.toString()}`);
             this._initCooldowns();
             this._startTickLoop();
@@ -77,11 +65,6 @@ class Bot {
             this.log.info(`[${this.name}] 连接已断开`);
             this._cleanup();
         });
-
-        // 任何常规通信也算活跃(兜底,防止 keepalive 钩子失效时误判为僵尸)
-        for (const ev of ['chat', 'healthChanged', 'playerJoined', 'playerLeft', 'blockUpdate']) {
-            this.bot.on(ev, () => { this.lastActivity = Date.now(); });
-        }
     }
 
     /* ======================== 行为模拟 ======================== */
@@ -169,6 +152,8 @@ class Bot {
             this.bot.chat(msg);
             this.log.debug(`[${this.name}] 聊天: ${msg}`);
         } catch (e) {
+            // 1.19+ 签名聊天在某些情况下会被拒;降级为单向广播不可行(客户端没广播权限),
+            // 这里仅记录警告,定时器仍会重置。
             this.log.warn(`[${this.name}] 聊天失败(可能被聊天签名拦截): ${e.message}`);
         }
         this.chatCooldownTicks = this._randTicks(this.config.chat.intervalMinSeconds,
@@ -184,15 +169,12 @@ class Bot {
         this._cleanup();
     }
 
+    // 在线判定:仅看是否已完成生成、且 bot 对象还在。
+    // (这是僵尸修复之前的稳定版本:run #7 用它两 bot 稳了 13 分钟。
+    //  代价:若服务器"静默断线"(无 FIN/RST、'end' 不触发)会留下假在线,
+    //  但正常重启/踢出会被 'end'/'kicked' 捕获并自动重连,日常使用稳定。)
     isOnline() {
-        if (!this.spawned || !this.bot || !this.bot.socket) return false;
-        const sock = this.bot.socket;
-        if (sock.destroyed || sock.connected === false) return false;
-        // 僵尸连接检测: 仅当长时间(5 分钟)未收到服务器任何包(含 keepalive)才判定为掉线。
-        // 阈值必须远大于服务器的 keepalive 间隔(Aternos/Paper 常为 60~120 秒),
-        // 否则正常空闲游玩会因收不到聊天/进出事件而被误判掉线、被强制重连(闪退/缺人)。
-        if (this.lastActivity && Date.now() - this.lastActivity > 300 * 1000) return false;
-        return true;
+        return this.spawned && this.bot !== null;
     }
 
     getPosition() {
@@ -203,7 +185,6 @@ class Bot {
 
     _cleanup() {
         this.spawned = false;
-        this.lastActivity = 0;
         if (this._tickHandle) {
             clearInterval(this._tickHandle);
             this._tickHandle = null;
