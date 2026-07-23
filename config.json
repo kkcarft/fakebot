@@ -42,6 +42,6 @@
   "authme": {
     "enabled": true,
     "password": "",
-    "preRegistered": false
+    "preRegistered": true
   }
 }
