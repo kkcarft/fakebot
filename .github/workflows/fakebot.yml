@@ -26,7 +26,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'npm'            # 缓存 npm 依赖,冷启动从 ~60s 降到 ~10s,缩短交接空档
+          # 注意:仓库没有 package-lock.json,不能开 cache:'npm'
+          # (开了会被 GitHub 判为找不到 lock 文件而失败)。保持关闭即可。
 
       - name: 安装依赖
         run: npm install --omit=dev --no-audit --no-fund
