@@ -37,5 +37,11 @@
       "求一组圆石",
       "233333"
     ]
+  },
+
+  "authme": {
+    "enabled": false,
+    "password": "",
+    "preRegistered": false
   }
 }

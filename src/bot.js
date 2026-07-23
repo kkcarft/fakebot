@@ -25,6 +25,9 @@ class Bot {
         this.moveTarget = null;        // Vec3,当前移动目标
         this.moveCooldownTicks = 0;    // 距下一次选目标的剩余 tick
         this.chatCooldownTicks = 0;    // 距下一次聊天的剩余 tick
+
+        // 鉴权状态(AuthMe 等):未验证前冻结移动/聊天
+        this.authed = !(this.config.authme && this.config.authme.enabled);
     }
 
     async connect() {
@@ -50,6 +53,7 @@ class Bot {
             this.log.info(`[${this.name}] 已生成于 ${this.home.toString()}`);
             this._initCooldowns();
             this._startTickLoop();
+            if (this._authEnabled()) this._startAuth();
         });
 
         this.bot.on('kicked', (reason) => {
@@ -65,6 +69,11 @@ class Bot {
             this.log.info(`[${this.name}] 连接已断开`);
             this._cleanup();
         });
+
+        // AuthMe 等验证插件:监听系统消息驱动登录状态机
+        if (this._authEnabled()) {
+            this.bot.on('message', (jsonMsg) => this._onAuthMessage(jsonMsg));
+        }
     }
 
     /* ======================== 行为模拟 ======================== */
@@ -83,6 +92,7 @@ class Bot {
 
     _tick() {
         if (!this.spawned || !this.bot || !this.bot.entity) return;
+        if (!this.authed) return;   // AuthMe 未验证前不移动/不聊天(会被冻/被踢)
         try {
             if (this.config.movement.enabled) this._tickMovement();
             if (this.config.chat.enabled) this._tickChat();
@@ -185,12 +195,66 @@ class Bot {
 
     _cleanup() {
         this.spawned = false;
+        this.authed = !(this.config.authme && this.config.authme.enabled);
         if (this._tickHandle) {
             clearInterval(this._tickHandle);
             this._tickHandle = null;
         }
         if (this.bot) {
             try { this.bot.clearControlStates(); } catch (_) {}
+        }
+    }
+
+    /* ======================== 鉴权(AuthMe 等) ======================== */
+
+    _authEnabled() {
+        return !!(this.config.authme && this.config.authme.enabled);
+    }
+
+    _authPassword() {
+        // 优先用 GitHub Actions Secret(避免明文进公开仓库),本地调试可放 config
+        return process.env.AUTHME_PASSWORD || (this.config.authme && this.config.authme.password) || '';
+    }
+
+    _startAuth() {
+        this.authed = false;
+        const pw = this._authPassword();
+        if (!pw) {
+            this.log.warn(`[${this.name}] AuthMe 已启用但未配置密码,跳过验证(假人将被冻结/踢出)`);
+            return;
+        }
+        setTimeout(() => {
+            if (!this.bot || !this.bot.chat) return;
+            if (this.config.authme && this.config.authme.preRegistered) {
+                // 已在服务端后台(/authme register)预注册,直接登录即可
+                this.bot.chat(`/login ${pw}`);
+                this.log.info(`[${this.name}] AuthMe: 发送 /login`);
+            } else {
+                // 先注册(若同名已存在,AuthMe 会提示,随后 /login 仍可用),再登录
+                this.bot.chat(`/register ${pw} ${pw}`);
+                this.log.info(`[${this.name}] AuthMe: 发送 /register`);
+                setTimeout(() => {
+                    if (this.bot && this.bot.chat) {
+                        this.bot.chat(`/login ${pw}`);
+                        this.log.info(`[${this.name}] AuthMe: 发送 /login`);
+                    }
+                }, 1200);
+            }
+            // 兜底:若服务器自动登录/提示成功,乐观标记已验证(消息监听也会纠正)
+            setTimeout(() => { this.authed = true; }, 2600);
+        }, 1500);
+    }
+
+    _onAuthMessage(jsonMsg) {
+        const text = (jsonMsg && typeof jsonMsg.toString === 'function') ? jsonMsg.toString() : '';
+        const t = text.toLowerCase();
+        if (t.includes('logged in') || t.includes('successfully') ||
+            t.includes('登录成功') || t.includes('已登录') || t.includes('welcome')) {
+            if (!this.authed) this.log.info(`[${this.name}] AuthMe 验证通过`);
+            this.authed = true;
+        } else if (t.includes('wrong password') || t.includes('incorrect') ||
+                   t.includes('密码错误') || t.includes('失败')) {
+            this.log.warn(`[${this.name}] AuthMe 密码错误,可能被踢,等待管理器重连`);
         }
     }
 
