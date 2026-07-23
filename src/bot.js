@@ -19,6 +19,7 @@ class Bot {
         this.bot = null;
         this.spawned = false;
         this.createdAt = Date.now();   // 供掉线自动重连检测使用
+        this.lastActivity = Date.now(); // 最近一次收到服务器通信(含 keepalive)的时间,用于僵尸连接检测
 
         // 行为状态
         this.home = null;              // Vec3,出生点(用于随机移动的圆心)
@@ -40,13 +41,24 @@ class Bot {
             hideErrors: false
         });
 
+        // 开启 TCP 保活:服务器单方面断开(无 FIN/RST)时,操作系统能更快发现断线
+        if (this.bot.socket && typeof this.bot.socket.setKeepAlive === 'function') {
+            this.bot.socket.setKeepAlive(true, 10000);
+        }
+        // 监听底层 keepalive 包 —— 这是“服务器还活着”的最可靠证据
+        if (this.bot._client && typeof this.bot._client.on === 'function') {
+            this.bot._client.on('keep_alive', () => { this.lastActivity = Date.now(); });
+        }
+
         this.bot.on('login', () => {
+            this.lastActivity = Date.now();
             this.log.info(`[${this.name}] 握手通过,等待生成...`);
         });
 
         this.bot.on('spawn', () => {
             this.spawned = true;
             this.home = this.bot.entity.position.clone();
+            this.lastActivity = Date.now();
             this.log.info(`[${this.name}] 已生成于 ${this.home.toString()}`);
             this._initCooldowns();
             this._startTickLoop();
@@ -65,6 +77,11 @@ class Bot {
             this.log.info(`[${this.name}] 连接已断开`);
             this._cleanup();
         });
+
+        // 任何常规通信也算活跃(兜底,防止 keepalive 钩子失效时误判为僵尸)
+        for (const ev of ['chat', 'healthChanged', 'playerJoined', 'playerLeft', 'blockUpdate']) {
+            this.bot.on(ev, () => { this.lastActivity = Date.now(); });
+        }
     }
 
     /* ======================== 行为模拟 ======================== */
@@ -152,8 +169,6 @@ class Bot {
             this.bot.chat(msg);
             this.log.debug(`[${this.name}] 聊天: ${msg}`);
         } catch (e) {
-            // 1.19+ 签名聊天在某些情况下会被拒;降级为单向广播不可行(客户端没广播权限),
-            // 这里仅记录警告,定时器仍会重置。
             this.log.warn(`[${this.name}] 聊天失败(可能被聊天签名拦截): ${e.message}`);
         }
         this.chatCooldownTicks = this._randTicks(this.config.chat.intervalMinSeconds,
@@ -170,7 +185,13 @@ class Bot {
     }
 
     isOnline() {
-        return this.spawned && this.bot !== null;
+        if (!this.spawned || !this.bot || !this.bot.socket) return false;
+        const sock = this.bot.socket;
+        if (sock.destroyed || sock.connected === false) return false;
+        // 僵尸连接检测: 90 秒内未收到服务器任何包(含 keepalive),
+        // 说明连接已被服务器单方面断开但本端未收到 FIN/RST,强制判定掉线以便重连。
+        if (this.lastActivity && Date.now() - this.lastActivity > 90 * 1000) return false;
+        return true;
     }
 
     getPosition() {
@@ -181,6 +202,7 @@ class Bot {
 
     _cleanup() {
         this.spawned = false;
+        this.lastActivity = 0;
         if (this._tickHandle) {
             clearInterval(this._tickHandle);
             this._tickHandle = null;
