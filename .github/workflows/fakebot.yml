@@ -1,0 +1,45 @@
+name: FakeBot 24/7
+
+# 每 6 小时开一班接力任务(GitHub cron 可能延迟几分钟,属正常)
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch: {}   # 也允许在 Actions 页面手动点 Run workflow 立即启动
+
+# 新班次启动时自动取消上一班,避免两班假人同名冲突
+concurrency:
+  group: fakebot
+  cancel-in-progress: true
+
+permissions:
+  contents: write        # 允许本工作流向仓库提交, 用于 60 天保活
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360          # GitHub 上限 360;配合内层 timeout 21540(≈359分),每班衔接空档仅约 1 分钟,避免 Aternos 约 2 分钟无人在线自动关服
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'            # 缓存 npm 依赖,冷启动从 ~60s 降到 ~10s,缩短交接空档
+
+      - name: 安装依赖
+        run: npm install --omit=dev --no-audit --no-fund
+
+      - name: 保活提交 (每班空 commit, 重置 60 天无活动停用定时任务的计时器)
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit --allow-empty -m "keepalive: touch repo to avoid 60-day scheduled-workflow disable"
+          git push "https://${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:${{ github.ref_name }}
+
+      - name: 运行假人 (约 359 分后正常收工,下一班 6 小时整准时接力,空档约 1 分钟)
+        run: timeout 21540 node src/index.js < /dev/null || true
