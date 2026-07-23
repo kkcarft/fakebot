@@ -22,9 +22,9 @@ class BotManager {
         this.log.info(`FakeBot 已启动,目标服务器 ${this.config.server.host}:${this.config.server.port} 协议 ${this.config.version}`);
         this._scheduleTick();
         this._scheduleTimer = setInterval(() => this._scheduleTick(), 30 * 1000);
-        // 断线自动重连:每 90 秒检查一次,掉线的假人自动重新连接
-        // (云端 24/7 场景必备:目标服务器重启后假人自动回归)
-        this._reconnectTimer = setInterval(() => this._checkReconnect(), 90 * 1000);
+        // 断线自动重连:每 20 秒检查一次,掉线的假人自动重新连接
+        // (云端 24/7 + Aternos 约 2 分钟无人即关服,必须尽快回归)
+        this._reconnectTimer = setInterval(() => this._checkReconnect(), 20 * 1000);
     }
 
     shutdown() {
@@ -38,8 +38,10 @@ class BotManager {
     _checkReconnect() {
         if (!this._autoOnline) return;
         for (const [name, bot] of [...this.bots.entries()]) {
-            // 创建至少 2 分钟后仍不在线才视为掉线(避开正常连接过程)
-            if (!bot.isOnline() && Date.now() - bot.createdAt > 120 * 1000) {
+            // Aternos 约 2 分钟无人在线就会自动关服,所以掉线必须尽快重连。
+            // 创建满 25 秒仍不在线即视为掉线并重连(正常握手远小于 25 秒,
+            // 即便偶发慢连也只会多试一次,不会造成长时间空窗)。
+            if (!bot.isOnline() && Date.now() - bot.createdAt > 25 * 1000) {
                 this.log.warn(`检测到假人 ${name} 掉线,尝试重连...`);
                 this.remove(name);
                 this.spawn(name).catch(e =>
