@@ -188,9 +188,10 @@ class Bot {
         if (!this.spawned || !this.bot || !this.bot.socket) return false;
         const sock = this.bot.socket;
         if (sock.destroyed || sock.connected === false) return false;
-        // 僵尸连接检测: 90 秒内未收到服务器任何包(含 keepalive),
-        // 说明连接已被服务器单方面断开但本端未收到 FIN/RST,强制判定掉线以便重连。
-        if (this.lastActivity && Date.now() - this.lastActivity > 90 * 1000) return false;
+        // 僵尸连接检测: 仅当长时间(5 分钟)未收到服务器任何包(含 keepalive)才判定为掉线。
+        // 阈值必须远大于服务器的 keepalive 间隔(Aternos/Paper 常为 60~120 秒),
+        // 否则正常空闲游玩会因收不到聊天/进出事件而被误判掉线、被强制重连(闪退/缺人)。
+        if (this.lastActivity && Date.now() - this.lastActivity > 300 * 1000) return false;
         return true;
     }
 
