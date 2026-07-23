@@ -26,8 +26,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          # 注意:仓库没有 package-lock.json,不能开 cache:'npm'
-          # (开了会被 GitHub 判为找不到 lock 文件而失败)。保持关闭即可。
+          # 仓库没有 package-lock.json,不能开 cache:'npm'(会报找不到 lock 文件而失败)
 
       - name: 安装依赖
         run: npm install --omit=dev --no-audit --no-fund
@@ -43,4 +42,6 @@ jobs:
           git push "https://${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:${{ github.ref_name }}
 
       - name: 运行假人 (约 359 分后正常收工,下一班 6 小时整准时接力,空档约 1 分钟)
+        env:
+          AUTHME_PASSWORD: ${{ secrets.AUTHME_PASSWORD }}
         run: timeout 21540 node src/index.js < /dev/null || true
