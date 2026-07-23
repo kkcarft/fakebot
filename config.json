@@ -1,0 +1,41 @@
+{
+  "server": {
+    "host": "919191.aternos.me",
+    "port": 24732
+  },
+  "version": "1.21.11",
+
+  "bots": {
+    "count": 2,
+    "names": ["Steve_2077", "Alex_Miner"],
+    "namePrefix": "Bot_",
+    "joinIntervalSeconds": 10
+  },
+
+  "schedule": {
+    "enabled": false,
+    "onlinePeriods": ["09:00-12:00", "18:00-23:59"]
+  },
+
+  "movement": {
+    "enabled": true,
+    "radius": 12.0,
+    "intervalMinSeconds": 3,
+    "intervalMaxSeconds": 10,
+    "jumpChance": 0.15
+  },
+
+  "chat": {
+    "enabled": true,
+    "intervalMinSeconds": 45,
+    "intervalMaxSeconds": 180,
+    "messages": [
+      "今天挖到钻石了!",
+      "有人一起去下矿吗?",
+      "这服务器不错啊",
+      "刚被苦力怕炸了 T_T",
+      "求一组圆石",
+      "233333"
+    ]
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "name": "fakebot-client",
+  "version": "1.0.0",
+  "description": "外部挂置式 Minecraft 假人客户端 - 走完整协议登录，对服务端无任何侵入",
+  "main": "src/index.js",
+  "bin": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "build:exe": "pkg . --targets node22-win-x64 --output dist/FakeBot.exe"
+  },
+  "pkg": {
+    "assets": [
+      "config.json",
+      "node_modules/minecraft-data/minecraft-data/data/dataPaths.json",
+      "node_modules/minecraft-data/minecraft-data/data/pc/**/*"
+    ]
+  },
+  "dependencies": {
+    "mineflayer": "^4.27.0",
+    "vec3": "^0.1.10"
+  },
+  "devDependencies": {
+    "@yao-pkg/pkg": "^6.4.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
