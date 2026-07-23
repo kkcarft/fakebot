@@ -40,7 +40,7 @@
   },
 
   "authme": {
-    "enabled": false,
+    "enabled": true,
     "password": "",
     "preRegistered": false
   }
