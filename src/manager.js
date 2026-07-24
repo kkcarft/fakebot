@@ -1,7 +1,6 @@
 'use strict';
 
 const Bot = require('./bot');
-const AternosWaker = require('./aternos');
 
 /**
  * 假人集群管理器:
@@ -17,8 +16,6 @@ class BotManager {
         this._autoOnline = false;
         this._scheduleTimer = null;
         this._spawnTimers = new Set();
-        this.waker = new AternosWaker(config, logger);   // Aternos 自动唤醒(默认关闭)
-        this._downStreak = new Map();  // name -> 连续掉线检测周期数
     }
 
     start() {
@@ -42,15 +39,6 @@ class BotManager {
         if (!this._autoOnline) return;
         for (const [name, bot] of [...this.bots.entries()]) {
             if (!bot.isOnline()) {
-                // 连续掉线计数:每 20s 一拍。累积到阈值即疑似"服务器已停",
-                // 触发一次 Aternos 唤醒(若已配置且不在冷却)。在线则清零。
-                const streak = (this._downStreak.get(name) || 0) + 1;
-                this._downStreak.set(name, streak);
-                // 连续约 60s(3 拍)仍起不来 => 首次唤醒;之后每 5 分钟(15 拍)再试,与 waker 冷却对齐
-                if (this.waker.enabled && streak >= 3 && (streak === 3 || streak % 15 === 0)) {
-                    this.log.warn(`假人 ${name} 连续掉线,疑似服务器已停止,尝试唤醒 Aternos...`);
-                    this.waker.wake().catch(() => {});
-                }
                 // Aternos 约 2 分钟无人在线就会自动关服,所以掉线必须尽快重连。
                 // 创建满 25 秒仍不在线即视为掉线并重连(正常握手远小于 25 秒,
                 // 即便偶发慢连也只会多试一次,不会造成长时间空窗)。
@@ -60,8 +48,6 @@ class BotManager {
                     this.spawn(name).catch(e =>
                         this.log.error(`重连 ${name} 失败(下轮再试): ${e.message}`));
                 }
-            } else {
-                this._downStreak.set(name, 0);
             }
         }
     }
