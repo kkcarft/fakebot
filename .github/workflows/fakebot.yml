@@ -49,8 +49,6 @@ jobs:
         id: runbot
         env:
           AUTHME_PASSWORD: ${{ secrets.AUTHME_PASSWORD }}
-          ATERNOS_EMAIL: ${{ secrets.ATERNOS_EMAIL }}
-          ATERNOS_PASSWORD: ${{ secrets.ATERNOS_PASSWORD }}
         run: |
           timeout 21540 node src/index.js < /dev/null
           code=$?
