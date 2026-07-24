@@ -41,7 +41,14 @@
 
   "authme": {
     "enabled": true,
-    "password": "",
-    "preRegistered": true
+    "password": "BotPass2026",
+    "preRegistered": true   #不会真有人想登bot吧？
+  },
+
+  "aternos": {
+    "enabled": false,
+    "serverId": "soft-Qo7B",
+    "email": "",
+    "password": "BotPass2026"
   }
 }
