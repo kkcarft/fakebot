@@ -41,7 +41,7 @@
 
   "authme": {
     "enabled": true,
-    "password": "BotPass2026",         #看什么看，想登假人呢
+    "password": "BotPass2026",
     "preRegistered": true
   }
 }
