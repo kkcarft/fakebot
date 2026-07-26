@@ -43,20 +43,5 @@
     "enabled": true,
     "password": "BotPass2026",
     "preRegistered": true
-  },
-
-  "ai": {
-    "enabled": true,
-    "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
-    "model": "glm-4.7-flash",
-    "apiKeys": "",
-    "systemPrompt": "你是 Minecraft Java 版服务器里一个挂机的真实玩家。你偶尔在公屏随口说点闲话，也会自然回复别人。语气像真人，简短，不要解释、不要括号动作、不要引号。",
-    "replyToPlayers": true,
-    "replyChance": 0.2,
-    "maxHistory": 6,
-    "maxHistoryTokens": 1500,
-    "temperature": 0.9,
-    "maxTokens": 60,
-    "minIntervalMs": 5000
   }
 }

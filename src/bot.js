@@ -1,7 +1,6 @@
 'use strict';
 
 const mineflayer = require('mineflayer');
-const AIClient = require('./ai');
 
 /**
  * 单个外部假人。
@@ -29,16 +28,6 @@ class Bot {
 
         // 鉴权状态(AuthMe 等):未验证前冻结移动/聊天
         this.authed = !(this.config.authme && this.config.authme.enabled);
-
-        // AI 聊天客户端(没配 key / 不可用则 usable=false,自动走随机话术池)
-        const _names = (this.config.bots && this.config.bots.names) || [];
-        const _slot = _names.indexOf(this.name) >= 0 ? _names.indexOf(this.name) : 0;
-        try {
-            this.ai = new AIClient(this.config, this.log, _slot);
-        } catch (e) {
-            this.ai = null;
-            this.log.warn(`[${this.name}] AI 客户端加载失败: ${e.message}`);
-        }
     }
 
     async connect() {
@@ -84,15 +73,6 @@ class Bot {
         // AuthMe 等验证插件:监听系统消息驱动登录状态机
         if (this._authEnabled()) {
             this.bot.on('message', (jsonMsg) => this._onAuthMessage(jsonMsg));
-        }
-
-        // AI 回复玩家公屏(仅当 AI 可用且开启;忽略自己发的消息)
-        // 是否真的回复由 ai.getReply 内部的 replyChance(默认 20%)决定
-        if (this.ai && this.ai.usable && this.ai.replyToPlayers) {
-            this.bot.on('chat', (username, message) => {
-                if (!username || username === this.name) return;
-                this._onPlayerChat(username, message);
-            });
         }
     }
 
@@ -175,29 +155,6 @@ class Bot {
             this.chatCooldownTicks--;
             return;
         }
-
-        // 优先用 AI 定时闲话(防踢保活,必须保留);失败/未配置再退回随机话术池
-        if (this.ai && this.ai.usable) {
-            // 先占住冷却,避免 50ms tick 内重复触发异步调用
-            this.chatCooldownTicks = this._randTicks(this.config.chat.intervalMinSeconds,
-                                                     this.config.chat.intervalMaxSeconds);
-            this.ai.getAmbient().then((text) => {
-                if (text) {
-                    try {
-                        this.bot.chat(text);
-                        this.log.debug(`[${this.name}] AI 闲话: ${text}`);
-                    } catch (e) {
-                        this.log.warn(`[${this.name}] 聊天失败(可能被聊天签名拦截): ${e.message}`);
-                    }
-                }
-            }).catch(() => {});
-            return;
-        }
-
-        this._chatRandom();
-    }
-
-    _chatRandom() {
         const pool = this.config.chat.messages;
         if (!pool || pool.length === 0) return;
         const msg = pool[Math.floor(Math.random() * pool.length)];
@@ -298,17 +255,6 @@ class Bot {
         } else if (t.includes('wrong password') || t.includes('incorrect') ||
                    t.includes('密码错误') || t.includes('失败')) {
             this.log.warn(`[${this.name}] AuthMe 密码错误,可能被踢,等待管理器重连`);
-        }
-    }
-
-    /* ======================== AI 玩家回复 ======================== */
-
-    async _onPlayerChat(username, message) {
-        try {
-            const reply = await this.ai.getReply(username, message);
-            if (reply) this.bot.chat(reply);
-        } catch (e) {
-            this.log.warn(`[${this.name}] AI 回复失败: ${e.message}`);
         }
     }
 
