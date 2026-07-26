@@ -8,8 +8,6 @@ on:
 
 # 同一时刻只允许一个班次在跑:
 # cancel-in-progress: false = 新触发排队等待,绝不杀掉正在保活的假人。
-# 之前用 true 会在下一班触发时直接取消正在运行的保活任务,
-# 导致假人掉线 -> Aternos 判定无人在线 -> 自动关服(就是"晚上开、早上关"的元凶)。
 concurrency:
   group: fakebot
   cancel-in-progress: false
@@ -30,7 +28,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          # 仓库没有 package-lock.json,不能开 cache:'npm'(会报找不到 lock 文件而失败)
 
       - name: 安装依赖
         run: npm install --omit=dev --no-audit --no-fund
@@ -45,22 +42,26 @@ jobs:
           git commit --allow-empty -m "keepalive: touch repo to avoid 60-day scheduled-workflow disable"
           git push "https://${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:${{ github.ref_name }}
 
-      - name: 运行假人 (约 359 分后正常收工,结尾步骤接力下一班实现无缝 24/7)
+      - name: 运行假人 (双服务器 / 方案A 多进程)
         id: runbot
         env:
           AUTHME_PASSWORD: ${{ secrets.AUTHME_PASSWORD }}
+          AI_API_KEYS: ${{ secrets.AI_API_KEYS }}
         run: |
-          timeout 21540 node src/index.js < /dev/null
-          code=$?
-          # 退出码 0(正常关机)或 124(timeout 到点)都视为"本班正常收工",放行接力;
-          # 其它退出码(如代码崩溃/异常)才视为失败,让任务变红以便你立刻发现服挂了。
-          # (原脚本末尾的 || true 会把一切失败都藏成绿色,故去掉。)
-          if [ "$code" -eq 0 ] || [ "$code" -eq 124 ]; then
-            echo "本班假人正常收工 (退出码 $code),准备接力下一班"
-          else
-            echo "::error::假人异常退出,退出码 $code —— 服务器可能已离线,请检查!"
-            exit "$code"
-          fi
+          # 方案 A:每个服务器一个独立进程,故障互不牵连。
+          # 关键:两个进程都会起健康检查 HTTP 端口(默认 3000),必须给不同 PORT,
+          # 否则第二个进程 EADDRINUSE 直接崩溃。Actions 上没人 ping 这个端口,
+          # 但代码无条件监听,所以必须区分。
+          # timeout 21540≈359分,到点后本班收工,结尾步骤接力下一班实现无缝 24/7。
+          PORT=3001 timeout 21540 node src/index.js config-s1.json < /dev/null & P1=$!
+          PORT=3002 timeout 21540 node src/index.js config-s2.json < /dev/null & P2=$!
+          wait $P1; C1=$?
+          wait $P2; C2=$?
+          ok=1
+          if [ "$C1" -ne 0 ] && [ "$C1" -ne 124 ]; then ok=0; echo "::error::实例1(config-s1)异常退出,码 $C1 —— 服务器可能已离线!"; fi
+          if [ "$C2" -ne 0 ] && [ "$C2" -ne 124 ]; then ok=0; echo "::error::实例2(config-s2)异常退出,码 $C2 —— 服务器可能已离线!"; fi
+          if [ "$ok" -eq 0 ]; then exit 1; fi
+          echo "本班双实例正常收工 (退出码 $C1/$C2),准备接力下一班"
 
       - name: 接力下一班 (无缝衔接,避免空窗导致 Aternos 自动关服)
         if: always()   # 即使上一班异常也尽量接力,保住 24/7;手动 Cancel 整个工作流时本步会被跳过
