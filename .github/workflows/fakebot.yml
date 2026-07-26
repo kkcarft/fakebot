@@ -54,12 +54,10 @@ jobs:
           # 但代码无条件监听,所以必须区分。
           # timeout 21540≈359分,到点后本班收工,结尾步骤接力下一班实现无缝 24/7。
           PORT=3001 timeout 21540 node src/index.js config-s1.json < /dev/null & P1=$!
-          PORT=3002 timeout 21540 node src/index.js config-s2.json < /dev/null & P2=$!
           wait $P1; C1=$?
-          wait $P2; C2=$?
+
           ok=1
           if [ "$C1" -ne 0 ] && [ "$C1" -ne 124 ]; then ok=0; echo "::error::实例1(config-s1)异常退出,码 $C1 —— 服务器可能已离线!"; fi
-          if [ "$C2" -ne 0 ] && [ "$C2" -ne 124 ]; then ok=0; echo "::error::实例2(config-s2)异常退出,码 $C2 —— 服务器可能已离线!"; fi
           if [ "$ok" -eq 0 ]; then exit 1; fi
           echo "本班双实例正常收工 (退出码 $C1/$C2),准备接力下一班"
 
