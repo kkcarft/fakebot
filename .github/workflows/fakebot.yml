@@ -53,7 +53,7 @@ jobs:
           # 否则第二个进程 EADDRINUSE 直接崩溃。Actions 上没人 ping 这个端口,
           # 但代码无条件监听,所以必须区分。
           # timeout 21540≈359分,到点后本班收工,结尾步骤接力下一班实现无缝 24/7。
-          PORT=3001 timeout 21540 node src/index.js config-s1.json < /dev/null & P1=$!
+          PORT=3001 timeout 21540 node src/index.js config.json < /dev/null & P1=$!
           wait $P1; C1=$?
 
           ok=1
